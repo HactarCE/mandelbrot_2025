@@ -7,6 +7,8 @@ pub(crate) trait Fractal {
     fn set_height(&mut self, height: u32);
 
     fn pan(&mut self, pan: eframe::egui::Vec2);
+    fn set_velocity(&mut self, velocity: eframe::egui::Vec2);
+    fn autopan(&mut self, dt: f32);
     fn zoom(&mut self, mouse: eframe::egui::Vec2, zoom: f32);
     // fn pan_zoom(&mut self, multi_touch: eframe::egui::MultiTouchInfo);
 

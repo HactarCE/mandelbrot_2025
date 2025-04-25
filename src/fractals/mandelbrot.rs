@@ -9,6 +9,8 @@ use super::fractal::Fractal;
 // TODO: change depth to be a u16
 const CYCLE_DEPTH: u32 = u32::MAX;
 
+const VELOCITY_DAMPING: f32 = 0.9999;
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum MandelbrotColoring {
     LogDepth,
@@ -19,6 +21,7 @@ pub(crate) struct Mandelbrot {
     // position and size
     // TODO: maybe store a Params and not these
     camera: Camera,
+    velocity: eframe::egui::Vec2,
     width: u32,
     height: u32,
 
@@ -49,7 +52,7 @@ impl Mandelbrot {
             100,
             Complex::zero(),
             // 8192,
-            1024,
+            2048,
             MandelbrotColoring::LogDepth,
         )
     }
@@ -187,6 +190,7 @@ impl Mandelbrot {
             camera,
             width,
             height,
+            velocity: eframe::egui::Vec2::ZERO,
             texture_id,
             needs_update: true,
             z0,
@@ -245,6 +249,15 @@ impl Fractal for Mandelbrot {
             * (self.camera.radius_real * self.height as f32 / self.width as f32);
 
         self.needs_update = true;
+    }
+
+    fn set_velocity(&mut self, velocity: eframe::egui::Vec2) {
+        self.velocity = velocity;
+    }
+
+    fn autopan(&mut self, dt: f32) {
+        self.pan(self.velocity * dt);
+        self.set_velocity(self.velocity * (1.0 - VELOCITY_DAMPING).powf(dt));
     }
 
     fn zoom(&mut self, mouse: eframe::egui::Vec2, zoom: f32) {

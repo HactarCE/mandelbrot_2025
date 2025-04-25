@@ -154,8 +154,13 @@ impl eframe::App for App {
                     eframe::egui::Id::new("main"),
                     egui::Sense::click_and_drag(),
                 );
-                self.main.pan(ctx.input(|i| i.smooth_scroll_delta));
-                self.main.pan(r.drag_delta());
+                // self.main.pan(ctx.input(|i| i.smooth_scroll_delta));
+                if r.is_pointer_button_down_on() {
+                    self.main.pan(r.drag_delta());
+                    self.main.set_velocity(r.drag_delta() / dt);
+                } else {
+                    self.main.autopan(dt);
+                }
 
                 // TODO: zooming with mouse
 
@@ -167,11 +172,11 @@ impl eframe::App for App {
                     self.main.zoom(
                         mouse_pos - ui.available_rect_before_wrap().center(),
                         ctx.input(|i| i.zoom_delta()),
-                    )
-                    // self.main.zoom(
-                    //     mouse_pos - ui.available_rect_before_wrap().center(),
-                    //     ctx.input(|i| i.smooth_scroll_delta.y),
-                    // );
+                    );
+                    self.main.zoom(
+                        mouse_pos - ui.available_rect_before_wrap().center(),
+                        ctx.input(|i| (i.smooth_scroll_delta.y / 200.0).exp2()),
+                    );
                     // ctx.input(|i| {
                     //     i.events.iter().for_each(|e| {
                     //         if let egui::Event::MouseWheel {
