@@ -24,7 +24,7 @@ struct Params {
 @group(0) @binding(0) var<uniform> params: Params;
 
 
-fn get_depth(c_real: f32, c_imag: f32) -> u32 {
+fn get_depth(c_real: f32, c_imag: f32) -> vec2<f32> {
     var z_real = params.z0_real;
     var z_imag = params.z0_imag;
     var old_real = z_real;
@@ -34,8 +34,9 @@ fn get_depth(c_real: f32, c_imag: f32) -> u32 {
     var period_i = 0;
     var period_len = 1;
     for (var depth: u32 = 0; depth < params.max_depth; depth++) {
-        if (z_real2 + z_imag2 > 4.0) {
-            return depth;
+        let mag2 = z_real2 + z_imag2;
+        if mag2 > 1000.0 {
+            return vec2(f32(depth) - log(log(mag2))/log(2.0), 1.0);
         }
         z_imag = (z_real + z_real) * z_imag + c_imag;
         z_real = z_real2 - z_imag2 + c_real;
@@ -43,9 +44,9 @@ fn get_depth(c_real: f32, c_imag: f32) -> u32 {
         z_imag2 = z_imag * z_imag;
 
         if ((old_real == z_real) && (old_imag == z_imag)) {
-            // // TODO: remove
-            // return depth;
-            // return params.cycle_depth;
+            // TODO: remove
+            return vec2(f32(depth), 0.0);
+            // return f32(params.cycle_depth);
         }
 
         period_i += 1;
@@ -56,7 +57,7 @@ fn get_depth(c_real: f32, c_imag: f32) -> u32 {
             old_imag = z_imag;
         }
     }
-    return params.max_depth;
+    return vec2(f32(params.max_depth), 1.0);
 }
 
 @vertex
@@ -90,72 +91,44 @@ fn get_next_power_of_2(x: u32) -> u32 {
 
 @fragment
 fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    let depth = get_depth(
+    var out = get_depth(
         params.center_real + input.fragmentPosition.x * params.radius_real,
         params.center_imag + input.fragmentPosition.y * params.radius_imag
     );
+    var depth = out.x;
     var color: f32;
-    if depth == params.max_depth {
+    if depth == f32(params.max_depth) {
         color = 0.0;
-    } else if depth == params.cycle_depth {
+    } else if depth == f32(params.cycle_depth) {
         color = 0.0;
-    } else if depth == 0 {
-        color = 1.0;
     } else {
-        // color = clamp(log(f32(depth)) * 35.0 / 255.0, 0.0, 1.0);
-        // color = clamp(0.1 * log(f32(depth)), 0.0, 1.0);
-        // TODO: if depth is very small, this might break
-        let next_power_of_2 = get_next_power_of_2(depth);
-        // if next_power_of_2 < depth {
-        //     return vec4<f32>(1.0, 0.0, 0.0, 1.0);
-        // }
-        let prev_power_of_2 = next_power_of_2 >> 1;
-        // if prev_power_of_2 > depth {
-        //     return vec4<f32>(0.0, 1.0, 0.0, 1.0);
-        // }
-        // let depth = f32(depth);
-        let t = f32(depth - prev_power_of_2) / f32(next_power_of_2 - prev_power_of_2);
-        color = t;
-        
+        depth -= 1.5;
+        var out_color = rainbow(fract(select(depth, log(depth + 1.0), depth > 0.0)));
+        if out.y == 0.0 {
+            out_color.a = 0.02;
+        }
+        return out_color;
     }
-    // return vec4<f32>(color, color, color, 1.0);
-    return turbo(color, 0.0, 1.0);
+    return vec4<f32>(color, color, color, 1.0);
 }
 
-// Copyright 2019 Google LLC.
-// SPDX-License-Identifier: Apache-2.0
-
-// Polynomial approximation in GLSL for the Turbo colormap
-// Original LUT: https://gist.github.com/mikhailov-work/ee72ba4191942acecc03fe6da94fc73f
-
-// Authors:
-//   Colormap Design: Anton Mikhailov (mikhailov@google.com)
-//   GLSL Approximation: Ruofei Du (ruofei@google.com)
-//   WGSL Port: Andrew Farkas
-
-fn turbo(value: f32, min: f32, max: f32) -> vec4<f32> {
-    let kRedVec4: vec4<f32> = vec4(0.13572138, 4.61539260, -42.66032258, 132.13108234);
-    let kGreenVec4: vec4<f32> = vec4(0.09140261, 2.19418839, 4.84296658, -14.18503333);
-    let kBlueVec4: vec4<f32> = vec4(0.10667330, 12.64194608, -60.58204836, 110.36276771);
-    let kRedVec2: vec2<f32> = vec2(-152.94239396, 59.28637943);
-    let kGreenVec2: vec2<f32> = vec2(4.27729857, 2.82956604);
-    let kBlueVec2: vec2<f32> = vec2(-89.90310912, 27.34824973);
-
-    let x = saturate((value - min) / (max - min));
-    if abs(x) < 0.51 && abs(x) > 0.49 {
-        return vec4(1.0, 1.0, 1.0, 1.0);
-    }
-    let v4: vec4<f32> = vec4( 1.0, x, x * x, x * x * x);
-    let v2: vec2<f32> = v4.zw * v4.z;
-    return vec4(
-        dot(v4, kRedVec4)   + dot(v2, kRedVec2),
-        dot(v4, kGreenVec4) + dot(v2, kGreenVec2),
-        dot(v4, kBlueVec4)  + dot(v2, kBlueVec2),
-        1.0,
-    );
+fn rainbow(t: f32) -> vec4<f32> {
+    let ts = abs(t - 0.5);
+    let h = 360.0 * t - 100.0;
+    let s = 1.5 - 1.5 * ts;
+    let l = 0.8 - 0.9 * ts;
+    return cubehelix(vec3(h, s, l));
 }
 
-fn linear_to_gamma(linear: vec4<f32>) -> vec4<f32> {
-    // from http://chilliant.blogspot.com/2012/08/srgb-approximations-for-hlsl.html
-    return max(1.055 * pow(linear, vec4(0.416666667)) - 0.055, vec4(0.0));
+fn cubehelix(c: vec3<f32>) -> vec4<f32> {
+    const DEG2RAD: f32 = 3.1415926535897932384626433 / 180.0;
+    let h = (c.x + 120.0) * DEG2RAD;
+    let l = c.z;
+    let a = c.y * l * (1.0 - l);
+    let cosh = cos(h);
+    let sinh = sin(h);
+    let r = min(1.0, (l - a * (0.14861 * cosh - 1.78277 * sinh)));
+    let g = min(1.0, (l - a * (0.29227 * cosh + 0.90649 * sinh)));
+    let b = min(1.0, (l + a * (1.97294 * cosh)));
+    return vec4(r, g, b, 1.0);
 }
